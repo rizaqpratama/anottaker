@@ -4,6 +4,7 @@ const { z } = require('zod')
 const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
+const { invokeLocalAgent } = require('./local-agent.cjs')
 
 const REQUEST_TIMEOUT_MS = 60_000
 
@@ -153,9 +154,27 @@ function providerModel(settings, decryptKey) {
 
 async function suggestEntities({ documentText, labels, settings, decryptKey }) {
   const started = Date.now()
-  const { model, chatModel } = providerModel(settings, decryptKey)
   const userPrompt = buildNerPrompt(documentText, labels)
   const systemPrompt = buildSystemPrompt(settings.aiPrompt || '')
+  if (settings.provider === 'local-agent') {
+    const agentId = settings.localAgent || 'codex'
+    const modelOverride = settings.localAgentModel || ''
+    const model = `${agentId}${modelOverride ? ` · ${modelOverride}` : ' · default model'}`
+    logAi('Request', { provider: 'local-agent', agent: agentId, model, timeoutMs: REQUEST_TIMEOUT_MS, systemPrompt, userPayload: JSON.parse(userPrompt) })
+    try {
+      const response = await invokeLocalAgent({ agentId, model: modelOverride, systemPrompt, userPrompt })
+      const parsed = nerResponseSchema.parse(response.parsed)
+      const suggestions = validateSuggestions(documentText, labels, parsed.entities)
+      const stats = { provider: 'local-agent', model: `${response.profile.name}${modelOverride ? ` · ${modelOverride}` : ' · default model'}`, inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, usageAvailable: false, elapsedMs: Date.now() - started, estimatedCost: null }
+      logAi('Response', { parsed, raw: response.raw, suggestions, stats })
+      return { suggestions, stats }
+    } catch (error) {
+      logAi('Request failed', { provider: 'local-agent', agent: agentId, model, elapsedMs: Date.now() - started, error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack, rawAgentResponse: error.rawAgentResponse } : error })
+      throw error
+    }
+  }
+
+  const { model, chatModel } = providerModel(settings, decryptKey)
   const extractor = chatModel.withStructuredOutput(nerResponseSchema, {
     name: 'ner_entity_suggestions',
     strict: true,
@@ -177,7 +196,7 @@ async function suggestEntities({ documentText, labels, settings, decryptKey }) {
     const parsed = response.parsed || response
     const usage = getUsage(response.raw)
     const suggestions = validateSuggestions(documentText, labels, parsed.entities || [])
-    const stats = { model, ...usage, elapsedMs: Date.now() - started, estimatedCost: estimateCost(model, usage) }
+    const stats = { provider: settings.provider || 'openai', model, ...usage, usageAvailable: true, elapsedMs: Date.now() - started, estimatedCost: estimateCost(model, usage) }
     logAi('Response', { parsed, raw: response.raw, suggestions, stats })
     return { suggestions, stats }
   } catch (error) {
