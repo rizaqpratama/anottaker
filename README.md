@@ -1,70 +1,64 @@
 # NERTator
 
-NERTator is a local-first Electron desktop app for creating and maintaining named-entity recognition (NER) training datasets. Import text records, define entity labels, annotate manually or with AI assistance, review work, and export JSONL training data.
+NERTator is a local-first toolkit for creating and maintaining named-entity recognition (NER) training datasets: import text records, define entity labels, annotate manually or with AI assistance, review work, and export JSONL training data.
 
-Projects are portable SQLite files with the `.nerdb` extension. Dataset text and annotations stay on the local machine unless you explicitly ask an AI provider for suggestions.
+Dataset text and annotations stay on the local machine unless you explicitly ask an AI provider for suggestions.
 
-## Features
+This is an npm-workspaces monorepo with three packages:
 
-- Portable `.nerdb` SQLite projects and recent-project list
-- Import `.txt`, `.csv`, and `.jsonl` datasets
-- Paginated document queue for large datasets; only the active batch is loaded
-- Manual text selection and character-offset annotations
-- Configurable labels with name, description, color, editing, and safe deletion
-- Draft/review workflow, next-document navigation, and draft-record navigation
-- Copy text, clear annotations, and delete records
-- JSONL export with `text` and ordered character-offset entity spans
-- AI suggestions through OpenAI or Google Gemini
-- Per-provider model selection, custom annotation instructions, request logs, token usage, elapsed time, and local pricing estimates
+| Package | What it is |
+| --- | --- |
+| [`desktop/`](desktop) | The original Electron + React desktop app. Projects are portable SQLite files with the `.nerdb` extension. |
+| [`mobile/`](mobile) | An Expo/React Native app offering the same core workflow on a phone — import, label, annotate, get AI suggestions, review, export — minus desktop's local coding-agent AI provider, which needs a spawned CLI subprocess that doesn't exist on mobile. |
+| [`shared/`](shared) (`@nertator/shared`) | Logic shared by both apps: types, span validation, JSONL export/import, the NER prompt and suggestion-validation logic, and pricing. |
 
 ## Requirements
 
 - Node.js 20 or later
 - npm
-- A supported desktop platform for Electron
+- For desktop: a supported desktop platform for Electron
+- For mobile: the [Expo Go](https://expo.dev/go) app or a simulator/emulator
 - An OpenAI API key or a Google AI Studio Gemini API key for optional AI assistance
 
 ## Getting started
 
+Install once at the repo root — this installs and links all three workspaces:
+
 ```bash
 npm install
+```
+
+### Desktop
+
+```bash
 npm run dev
 ```
 
-`npm run dev` starts Vite and Electron together.
-
-To create production web and Electron build artifacts:
+Builds `shared`, then starts Vite and Electron together.
 
 ```bash
-npm run build
+npm run build   # production build (renderer + Electron main files)
+npm test        # runs shared's and desktop's test suites
 ```
 
-Run the test suite with:
+See [`desktop/`](desktop) for the app itself. `better-sqlite3` must be built against Electron's Node ABI — if Electron reports `ERR_DLOPEN_FAILED` or a module-version mismatch, run `npm run rebuild:native` and restart.
+
+### Mobile
 
 ```bash
-npm test
+npm run dev:mobile
 ```
 
-### Native SQLite module errors
-
-`better-sqlite3` must be built against Electron's Node ABI. If Electron reports `ERR_DLOPEN_FAILED` or a module-version mismatch, rebuild it:
-
-```bash
-npm run rebuild:native
-```
-
-Then restart Electron.
+Builds `shared`, then runs `expo start`. Scan the QR code with Expo Go, or press `i`/`a` for a simulator. See [`mobile/README.md`](mobile/README.md) for setup details and current limitations.
 
 ## Workflow
 
-1. Create a project or open an existing `.nerdb` file.
+1. Create a project (desktop: create or open a `.nerdb` file; mobile: name a new on-device project).
 2. Add labels in **Manage labels**. A label has a name, description, and color.
-3. Import documents from a supported source.
-4. Select text and apply a label, or use **Suggest entities** in the AI sidebar.
+3. Import documents from a `.txt`, `.csv`, or `.jsonl` file.
+4. Select text and apply a label, or use **Suggest entities** for AI assistance.
 5. Review records and mark them reviewed when complete.
-6. Export reviewed records as JSONL.
-
-The footer includes **Open next draft**, which opens the lowest-index draft record. Deleting a record advances to the next draft record and wraps to the earliest remaining draft when necessary.
+6. Export reviewed (or all) records as JSONL.
 
 ## Import formats
 
@@ -86,56 +80,37 @@ Entity offsets are zero-based and end-exclusive.
 
 ## AI assistance
 
-Open **AI settings** to choose a provider, enter its API key, select a model, and add custom annotation instructions.
+Both apps let you choose a provider, enter its API key, select a model, and add custom annotation instructions appended to a shared base prompt that requires exact source-text spans, uses only defined labels, and requests at most one highest-confidence candidate per label.
 
-- **OpenAI** uses LangChain's OpenAI integration and can load models available to the saved OpenAI key.
-- **Google Gemini** uses LangChain's Google Generative AI integration and provides supported Gemini model choices.
-- API keys are encrypted using Electron `safeStorage`; they are not written to project databases or exposed to the renderer.
-- Suggestions are ephemeral until accepted. **Apply all** adds all non-overlapping valid suggestions at once.
-- The shared prompt requires exact source-text spans, uses only defined labels, and requests at most one highest-confidence candidate per label. Your custom instructions are appended to that contract.
-- Requests time out after 60 seconds and show a user-facing error without changing existing annotations.
-
-### AI request logs
-
-The Electron terminal logs the system prompt, source-text payload, structured provider response, normalized suggestions, usage, and errors for each AI request. API keys are never logged.
-
-These logs intentionally include document text. Do not share them if the dataset contains sensitive information.
+- **OpenAI** and **Google Gemini** are supported on both desktop and mobile.
+- Desktop additionally supports routing requests through a **local coding agent** (Codex, Claude Code, Cursor Agent, OpenCode, or Google Antigravity) already installed and authenticated on your machine, instead of a hosted API — this only makes sense on desktop, since it spawns a CLI subprocess.
+- Suggestions are ephemeral until accepted; accepting one writes a normal entity row.
+- API keys are encrypted at rest (Electron `safeStorage` on desktop, the device keychain via `expo-secure-store` on mobile) and never written to project data.
 
 ### Pricing estimates
 
-NERTator reads [data/pricing.csv](data/pricing.csv) locally and calculates estimated request cost from reported token usage. Pricing is matched by exact model name. A model missing from the table shows **Cost unavailable**.
+Both apps estimate request cost from reported token usage against a shared per-model pricing table (`shared/data/pricing.csv`). Pricing is matched by exact model name; a model missing from the table shows **Cost unavailable**.
 
 ## Architecture
 
 ```text
-React renderer
-  -> context-isolated Electron preload bridge
-  -> Electron main process
-      -> SQLite project database (.nerdb)
-      -> LangChain AI service
-          -> OpenAI or Google Gemini
+                     shared/  (types, validation, prompt, pricing)
+                        |
+      ------------------------------------
+      |                                  |
+   desktop/                           mobile/
+React renderer                    React Native screens
+  -> Electron preload bridge         -> expo-sqlite
+  -> Electron main                   -> expo-secure-store
+     -> SQLite (.nerdb)              -> direct fetch() to
+     -> LangChain / local agent         OpenAI or Gemini
 ```
 
-The renderer never receives API keys. The main process fetches the canonical document from SQLite before an AI request, validates returned spans against that source text, and only accepted suggestions are saved as annotations.
-
-## Project structure
-
-```text
-electron/
-  main.cjs       Electron lifecycle, IPC, encrypted settings
-  preload.cjs    Narrow renderer-to-main API
-  database.cjs   SQLite project persistence
-  ai.cjs         LangChain providers, prompt, validation, usage, pricing
-src/
-  main.tsx       React application UI
-  shared.ts      Shared types and span/export helpers
-data/
-  pricing.csv    Local per-model token pricing table
-```
+See [`CLAUDE.md`](CLAUDE.md) for the full architecture writeup, including exactly what's shared between the two apps and what's deliberately platform-specific.
 
 ## Security and privacy
 
-- `.nerdb` files contain local project data and annotations.
+- Desktop's `.nerdb` files and mobile's on-device SQLite database contain local project data and annotations.
 - An AI request sends only the currently open document, its label schema, and your custom instructions to the selected provider.
-- Requests occur only after you click **Suggest entities**.
-- API keys are encrypted with the operating system's secure storage when available.
+- Requests occur only after you tap/click **Suggest entities**.
+- API keys are encrypted with the operating system's (or device's) secure storage.

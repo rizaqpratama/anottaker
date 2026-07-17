@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import type { DatasetDocument, EntitySpan, Label, Project, DocumentStatus, AiSuggestion } from './shared'
+import type { DatasetDocument, EntitySpan, Label, Project, DocumentStatus, AiSuggestion } from '@nertator/shared'
 declare global { interface Window { ner: {
   createProject(name: string): Promise<Project | null>; openProject(): Promise<Project | null>; recentProjects(): Promise<{ path: string; name: string; openedAt: string }[]>; openRecentProject(filePath: string): Promise<Project>; importDocuments(): Promise<{ count: number } | null>; loadPage(page: number): Promise<Project>; getDocument(id: string): Promise<DatasetDocument | null>;
   addLabel(label: Label): Promise<Project>; updateLabel(label: Label): Promise<Project>; removeLabel(id: string): Promise<Project>; addEntity(entity: EntitySpan): Promise<Project>; removeEntity(id: string): Promise<Project>; clearEntities(id: string): Promise<Project>; deleteDocument(id: string): Promise<Project>; setStatus(id: string, status: DocumentStatus): Promise<Project>;
