@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const OpenAI = require('openai')
 const { ProjectDatabase } = require('./database.cjs')
 const { suggestEntities } = require('./ai.cjs')
-const { AGENT_PROFILES, acpRuntimeStatus, discoverLocalAgents, listLocalAgentModels, restartLocalAgent, shutdownLocalAgents } = require('./local-agent.cjs')
+const { AGENT_PROFILES, acpRuntimeStatus, clearLocalAgentContext, discoverLocalAgents, listLocalAgentModels, restartLocalAgent, shutdownLocalAgents } = require('./local-agent.cjs')
 
 let win; let project; let activePage = 0; const pageSize = 100
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json')
@@ -54,6 +54,7 @@ ipcMain.handle('ai:local-agents', () => discoverLocalAgents())
 ipcMain.handle('ai:local-agent-models', (_, agent) => listLocalAgentModels(agent))
 ipcMain.handle('ai:local-agent-runtime', (_, agent) => { if (!AGENT_PROFILES[agent]) throw new Error('Choose a supported local coding agent.'); return acpRuntimeStatus(agent) })
 ipcMain.handle('ai:restart-local-agent', (_, agent) => restartLocalAgent(agent))
+ipcMain.handle('ai:clear-local-agent-context', (_, agent) => clearLocalAgentContext(agent))
 ipcMain.handle('project:export', async (_, reviewedOnly) => { requireProject(); const choice = await dialog.showSaveDialog(win, { defaultPath: 'dataset.jsonl', filters: [{ name: 'JSON Lines', extensions: ['jsonl'] }] }); if (choice.canceled || !choice.filePath) return null; const count = project.exportJsonl(choice.filePath, reviewedOnly); return { count, path: choice.filePath } })
 ipcMain.handle('ai:suggest', async (_, document) => {
   requireProject()

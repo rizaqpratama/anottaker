@@ -56,6 +56,10 @@ describe('local coding agent adapters', () => {
     expect(response.entities[0].text).toBe('Ada')
   })
 
+  it('reports malformed ACP output without treating prose as an entity response', () => {
+    expect(() => parseAgentResponse('I cannot return JSON for this request.')).toThrow('required JSON entity response')
+  })
+
   it('keeps the NER payload in stdin prompt content', () => {
     const prompt = formatAgentPrompt('SYSTEM', '{"sourceText":"private record"}')
     expect(prompt).toContain('private record')

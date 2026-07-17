@@ -3,7 +3,7 @@ const fsp = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { spawn } = require('node:child_process')
-const { ACP_AGENT_IDS, acpRuntimeStatus, bundledBin, invokeAcpAgent, shutdownAcpAgents, stopAcpRuntime } = require('./acp-agent.cjs')
+const { ACP_AGENT_IDS, acpRuntimeStatus, bundledBin, clearAcpSession, invokeAcpAgent, shutdownAcpAgents, stopAcpRuntime } = require('./acp-agent.cjs')
 
 const LOCAL_AGENT_TIMEOUT_MS = 60_000
 const MAX_OUTPUT_BYTES = 1_000_000
@@ -205,7 +205,12 @@ async function invokeLocalAgent({ agentId, model, systemPrompt, userPrompt }) {
   if (ACP_AGENT_IDS.has(agentId)) {
     try {
       const raw = await invokeAcpAgent({ agentId, executablePath, profile, model, systemPrompt, userPrompt })
-      return { profile, parsed: parseAgentResponse(raw.stdout), raw }
+      try {
+        return { profile, parsed: parseAgentResponse(raw.stdout), raw }
+      } catch (error) {
+        if (error instanceof Error) error.rawAgentResponse = raw
+        throw error
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (/auth|login|sign.?in|unauthori[sz]ed|credential/i.test(message)) {
@@ -277,4 +282,10 @@ async function restartLocalAgent(agentId) {
   return acpRuntimeStatus(agentId)
 }
 
-module.exports = { AGENT_PROFILES, LOCAL_AGENT_TIMEOUT_MS, acpRuntimeStatus, agyPromptTransportForVersion, buildAgentCommand, discoverLocalAgents, findEntities, formatAgentPrompt, invokeLocalAgent, isCursorAgentHelp, listLocalAgentModels, parseAgentResponse, restartLocalAgent, resolveExecutable, shutdownLocalAgents }
+async function clearLocalAgentContext(agentId) {
+  if (!AGENT_PROFILES[agentId]) throw new Error('Choose a supported local coding agent.')
+  if (!ACP_AGENT_IDS.has(agentId)) return { agentId, state: 'not-persistent', session: 'cleared' }
+  return clearAcpSession(agentId)
+}
+
+module.exports = { AGENT_PROFILES, LOCAL_AGENT_TIMEOUT_MS, acpRuntimeStatus, agyPromptTransportForVersion, buildAgentCommand, clearLocalAgentContext, discoverLocalAgents, findEntities, formatAgentPrompt, invokeLocalAgent, isCursorAgentHelp, listLocalAgentModels, parseAgentResponse, restartLocalAgent, resolveExecutable, shutdownLocalAgents }

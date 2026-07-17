@@ -166,6 +166,7 @@ async function suggestEntities({ documentText, labels, settings, decryptKey }) {
       const parsed = nerResponseSchema.parse(response.parsed)
       const suggestions = validateSuggestions(documentText, labels, parsed.entities)
       const stats = { provider: 'local-agent', model: `${response.profile.name}${modelOverride ? ` · ${modelOverride}` : ' · default model'}`, inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, usageAvailable: false, elapsedMs: Date.now() - started, estimatedCost: null }
+      if (response.raw?.timing) logAi('ACP timing', { agent: agentId, model: stats.model, ...response.raw.timing, elapsedMs: stats.elapsedMs })
       logAi('Response', { parsed, raw: response.raw, suggestions, stats })
       return { suggestions, stats }
     } catch (error) {

@@ -91,7 +91,7 @@ async function startAcpRuntime({ agentId, executablePath, profile }) {
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
   })
-  const runtime = { agentId, profile, workspace, child, stdout: '', stderr: '', connection: null, context: null, initialized: false, queue: Promise.resolve(), stopped: false, command: { executable: command.executable, args: command.args } }
+  const runtime = { agentId, profile, workspace, child, stdout: '', stderr: '', connection: null, context: null, session: null, sessionModel: null, initialized: false, queue: Promise.resolve(), stopped: false, command: { executable: command.executable, args: command.args } }
   child.stdout.on('data', (chunk) => { runtime.stdout = appendOutput(runtime.stdout, chunk.toString()) })
   child.stderr.on('data', (chunk) => { runtime.stderr = appendOutput(runtime.stderr, chunk.toString()) })
   child.on('exit', () => { runtime.initialized = false; runtime.connection?.close(new Error(`${profile.name} ACP process exited.`)) })
@@ -127,9 +127,30 @@ async function stopAcpRuntime(agentId) {
   if (!runtime) return
   runtimes.delete(agentId)
   runtime.stopped = true
+  await closeAcpSession(runtime)
   runtime.connection?.close(new Error('NERTator closed the ACP agent.'))
   if (runtime.child.exitCode === null && !runtime.child.killed) runtime.child.kill('SIGTERM')
   await fsp.rm(runtime.workspace, { recursive: true, force: true })
+}
+
+async function closeAcpSession(runtime) {
+  const session = runtime?.session
+  if (!session) return false
+  runtime.session = null
+  runtime.sessionModel = null
+  session.dispose()
+  await runtime.context?.request((await loadAcp()).methods.agent.session.close, { sessionId: session.sessionId }).catch(() => {})
+  return true
+}
+
+async function clearAcpSession(agentId) {
+  const runtime = runtimes.get(agentId)
+  if (!runtime || !isAlive(runtime)) return { agentId, state: 'stopped', session: 'cleared' }
+  const clear = () => closeAcpSession(runtime)
+  const queued = runtime.queue.then(clear, clear)
+  runtime.queue = queued.catch(() => {})
+  await queued
+  return { agentId, state: 'ready', session: 'cleared' }
 }
 
 async function shutdownAcpAgents() { await Promise.all([...runtimes.keys()].map(stopAcpRuntime)) }
@@ -143,15 +164,31 @@ function acpRuntimeStatus(agentId) {
 
 async function invokeAcpAgent({ agentId, executablePath, profile, model, systemPrompt, userPrompt }) {
   if (!ACP_AGENT_IDS.has(agentId)) throw new Error('Choose an ACP-enabled local agent.')
+  const invocationStartedAt = Date.now()
+  const reusedRuntime = isAlive(runtimes.get(agentId))
   const runtime = await startAcpRuntime({ agentId, executablePath, profile })
+  const runtimeAcquireMs = Date.now() - invocationStartedAt
+  const queuedAt = Date.now()
   const execute = async () => {
+    const executionStartedAt = Date.now()
     const acp = await loadAcp()
-    const session = await runtime.context.buildSession(runtime.workspace).start()
+    const reusedSession = Boolean(runtime.session)
+    const sessionStartedAt = Date.now()
+    if (!runtime.session) {
+      runtime.session = await runtime.context.buildSession(runtime.workspace).start()
+      runtime.sessionModel = model || ''
+      await applyModelOverride(runtime.context, runtime.session, model, acp)
+    } else if ((runtime.sessionModel || '') !== (model || '')) {
+      await applyModelOverride(runtime.context, runtime.session, model, acp)
+      runtime.sessionModel = model || ''
+    }
+    const session = runtime.session
+    const sessionCreateMs = reusedSession ? 0 : Date.now() - sessionStartedAt
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), ACP_TIMEOUT_MS)
     const textParts = []
     try {
-      await applyModelOverride(runtime.context, session, model, acp)
+      const promptStartedAt = Date.now()
       const promptRequest = session.prompt(formatAcpPrompt(systemPrompt, userPrompt), { cancellationSignal: controller.signal })
       for (;;) {
         const update = await session.nextUpdate()
@@ -161,7 +198,23 @@ async function invokeAcpAgent({ agentId, executablePath, profile, model, systemP
       await promptRequest
       const stdout = textParts.join('')
       if (!stdout.trim()) throw new Error('ACP agent completed without a text response.')
-      return { stdout, stderr: runtime.stderr, persistent: true, acp: true, model: model || null, command: runtime.command }
+      return {
+        stdout,
+        stderr: runtime.stderr,
+        persistent: true,
+        acp: true,
+        model: model || null,
+        command: runtime.command,
+        timing: {
+          runtime: reusedRuntime ? 'warm' : 'cold',
+          session: reusedSession ? 'warm' : 'new',
+          runtimeAcquireMs,
+          queueWaitMs: executionStartedAt - queuedAt,
+          sessionCreateMs,
+          promptResponseMs: Date.now() - promptStartedAt,
+          totalAcpMs: Date.now() - invocationStartedAt,
+        },
+      }
     } catch (error) {
       if (controller.signal.aborted) {
         runtime.context.notify(acp.methods.agent.session.cancel, { sessionId: session.sessionId }).catch(() => {})
@@ -170,8 +223,6 @@ async function invokeAcpAgent({ agentId, executablePath, profile, model, systemP
       throw error
     } finally {
       clearTimeout(timer)
-      session.dispose()
-      runtime.context.request(acp.methods.agent.session.close, { sessionId: session.sessionId }).catch(() => {})
     }
   }
   const queued = runtime.queue.then(execute, execute)
@@ -182,4 +233,4 @@ async function invokeAcpAgent({ agentId, executablePath, profile, model, systemP
   }
 }
 
-module.exports = { ACP_AGENT_IDS, ACP_TIMEOUT_MS, acpRuntimeStatus, applyModelOverride, buildAcpCommand, bundledBin, formatAcpPrompt, invokeAcpAgent, permissionDenied, resolveExecutable, shutdownAcpAgents, startAcpRuntime, stopAcpRuntime }
+module.exports = { ACP_AGENT_IDS, ACP_TIMEOUT_MS, acpRuntimeStatus, applyModelOverride, buildAcpCommand, bundledBin, clearAcpSession, formatAcpPrompt, invokeAcpAgent, permissionDenied, resolveExecutable, shutdownAcpAgents, startAcpRuntime, stopAcpRuntime }
