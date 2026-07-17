@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Bot, Check, ChevronLeft, ChevronRight, Download, FileUp, KeyRound, Plus, Sparkles, Tags, X } from 'lucide-react'
-import { DatasetDocument, EntitySpan, Label, Project, uid, validateSpan } from './shared'
+import { DatasetDocument, EntitySpan, Label, Project, uid, validateSpan } from '@nertator/shared'
 import './styles.css'
 
 const colors = ['#7765da', '#249f84', '#dd7b3c', '#d75a75', '#198bc5', '#9f7a2c']

@@ -3,3 +3,5 @@ dist/
 dist-electron/
 *.tsbuildinfo
 .DS_Store
+shared/dist/
+mobile/.expo/
