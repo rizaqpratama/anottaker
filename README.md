@@ -4,6 +4,8 @@ NERTator is a local-first Electron desktop app for creating and maintaining name
 
 Projects are portable SQLite files with the `.nerdb` extension. Dataset text and annotations stay on the local machine unless you explicitly ask an AI provider for suggestions.
 
+A web app version with the same UI and logic, running as a local Node/Express server instead of an Electron shell, is available in [`web/`](web/README.md).
+
 ## Features
 
 - Portable `.nerdb` SQLite projects and recent-project list
