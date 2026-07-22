@@ -31,6 +31,7 @@ ipcMain.handle('project:add-label', (_, label) => { requireProject(); project.ad
 ipcMain.handle('project:update-label', (_, label) => { requireProject(); project.updateLabel(label); sendProject(); return project.snapshot(activePage, pageSize) })
 ipcMain.handle('project:remove-label', (_, id) => { requireProject(); project.removeLabel(id); sendProject(); return project.snapshot(activePage, pageSize) })
 ipcMain.handle('project:add-entity', (_, entity) => { requireProject(); project.addEntity(entity); sendProject(); return project.snapshot() })
+ipcMain.handle('project:update-entity-label', (_, id, labelId) => { requireProject(); project.updateEntityLabel(id, labelId); sendProject(); return project.snapshot() })
 ipcMain.handle('project:remove-entity', (_, id) => { requireProject(); project.removeEntity(id); sendProject(); return project.snapshot() })
 ipcMain.handle('project:clear-entities', (_, id) => { requireProject(); project.clearEntities(id); sendProject(); return project.snapshot(activePage, pageSize) })
 ipcMain.handle('project:delete-document', (_, id) => { requireProject(); project.deleteDocument(id); sendProject(); return project.snapshot(activePage, pageSize) })

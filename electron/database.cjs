@@ -33,6 +33,7 @@ class ProjectDatabase {
   removeLabel(id) { const usage = this.db.prepare('SELECT COUNT(*) AS total FROM entities WHERE label_id = ?').get(id).total; if (usage) throw new Error(`This label is applied to ${usage} ${usage === 1 ? 'entity' : 'entities'}. Remove those annotations before deleting it.`); this.db.prepare('DELETE FROM labels WHERE id = ?').run(id) }
   addDocuments(items) { const insert = this.db.prepare('INSERT INTO documents VALUES (?, ?, ?, ?, ?)'); const now = new Date().toISOString(); const tx = this.db.transaction(() => items.forEach((text) => insert.run(randomUUID(), text, 'import', 'draft', now))); tx() }
   addEntity(entity) { this.db.prepare('INSERT INTO entities VALUES (?, ?, ?, ?, ?)').run(entity.id, entity.documentId, entity.start, entity.end, entity.labelId) }
+  updateEntityLabel(id, labelId) { this.db.prepare('UPDATE entities SET label_id = ? WHERE id = ?').run(labelId, id) }
   removeEntity(id) { this.db.prepare('DELETE FROM entities WHERE id = ?').run(id) }
   clearEntities(documentId) { this.db.prepare('DELETE FROM entities WHERE document_id = ?').run(documentId) }
   deleteDocument(id) { const tx = this.db.transaction(() => { this.db.prepare('DELETE FROM entities WHERE document_id = ?').run(id); this.db.prepare('DELETE FROM documents WHERE id = ?').run(id) }); tx() }

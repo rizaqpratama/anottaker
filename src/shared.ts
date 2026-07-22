@@ -7,6 +7,13 @@ export type AiSuggestion = { id: string; start: number; end: number; label: stri
 
 export const uid = () => crypto.randomUUID()
 
+export function entityContextMenuItems(labels: Label[]) {
+  return [
+    { action: 'delete' as const, hotkey: '0', labelId: undefined, name: 'Delete' },
+    ...labels.map((label, index) => ({ action: 'label' as const, hotkey: String(index + 1), labelId: label.id, name: label.name })),
+  ]
+}
+
 export function validateSpan(text: string, span: Pick<EntitySpan, 'start' | 'end'>, existing: Pick<EntitySpan, 'start' | 'end'>[] = []) {
   if (!Number.isInteger(span.start) || !Number.isInteger(span.end) || span.start < 0 || span.end > text.length || span.start >= span.end) return 'Span must be within document boundaries.'
   if (existing.some((item) => span.start < item.end && span.end > item.start)) return 'Entity spans cannot overlap.'
