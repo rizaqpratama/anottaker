@@ -14,14 +14,17 @@ class ProjectDatabase {
       CREATE INDEX IF NOT EXISTS idx_entities_document_id ON entities(document_id);`)
   }
   initialize(name) { if (!this.db.prepare('SELECT id FROM project LIMIT 1').get()) this.db.prepare('INSERT INTO project VALUES (?, ?)').run(randomUUID(), name) }
-  snapshot(page = 0, pageSize = 100) {
+  snapshot(page = 0, pageSize = 100, searchQuery = '') {
     const project = this.db.prepare('SELECT * FROM project LIMIT 1').get()
     const labels = this.db.prepare('SELECT * FROM labels ORDER BY name').all().map((x) => ({ ...x, description: x.description || undefined }))
     const offset = page * pageSize
-    const rows = this.db.prepare('SELECT * FROM documents ORDER BY created_at, id LIMIT ? OFFSET ?').all(pageSize, offset)
+    const query = String(searchQuery || '').trim().slice(0, 500)
+    const where = query ? "WHERE text COLLATE NOCASE LIKE ? ESCAPE '\\'" : ''
+    const parameters = query ? [`%${query.replace(/[\\%_]/g, '\\$&')}%`] : []
+    const rows = this.db.prepare(`SELECT * FROM documents ${where} ORDER BY created_at, id LIMIT ? OFFSET ?`).all(...parameters, pageSize, offset)
     const documents = rows.map((x) => ({ id: x.id, text: x.text, source: x.source, status: x.status, createdAt: x.created_at, entities: [] }))
-    const count = this.db.prepare('SELECT COUNT(*) AS total FROM documents').get().total
-    return { id: project.id, name: project.name, path: this.path, labels, documents, totalDocuments: count, page, pageSize }
+    const count = this.db.prepare(`SELECT COUNT(*) AS total FROM documents ${where}`).get(...parameters).total
+    return { id: project.id, name: project.name, path: this.path, labels, documents, totalDocuments: count, page, pageSize, searchQuery: query }
   }
   getDocument(id) { const row = this.db.prepare('SELECT * FROM documents WHERE id = ?').get(id); if (!row) return null; const entities = this.db.prepare('SELECT * FROM entities WHERE document_id = ? ORDER BY start').all(id).map((x) => ({ id: x.id, documentId: x.document_id, start: x.start, end: x.end, labelId: x.label_id })); return { id: row.id, text: row.text, source: row.source, status: row.status, createdAt: row.created_at, entities } }
   exportJsonl(filePath, reviewedOnly) { const labels = new Map(this.db.prepare('SELECT id, name FROM labels').all().map((x) => [x.id, x.name])); const rows = this.db.prepare(`SELECT id, text FROM documents ${reviewedOnly ? "WHERE status = 'reviewed'" : ''} ORDER BY created_at, id`).iterate(); const findEntities = this.db.prepare('SELECT start, end, label_id FROM entities WHERE document_id = ? ORDER BY start'); const fd = require('node:fs').openSync(filePath, 'w'); let count = 0; try { for (const row of rows) { const entities = findEntities.all(row.id).map((entity) => ({ start: entity.start, end: entity.end, label: labels.get(entity.label_id) || 'UNKNOWN' })); require('node:fs').writeSync(fd, `${JSON.stringify({ text: row.text, entities })}\n`); count++ } } finally { require('node:fs').closeSync(fd) } return count }

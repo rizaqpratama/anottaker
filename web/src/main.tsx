@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { Bot, Check, ChevronLeft, ChevronRight, Download, FileUp, KeyRound, Plus, Sparkles, Tags, X } from 'lucide-react'
 import { DatasetDocument, EntitySpan, Label, Project, uid, validateSpan } from './shared'
 import './styles.css'
+import './search.css'
 
 const colors = ['#7765da', '#249f84', '#dd7b3c', '#d75a75', '#198bc5', '#9f7a2c']
 function App() {
@@ -17,6 +18,31 @@ function App() {
   useEffect(() => window.ner.onProjectChanged((next) => { setProject(next) }), [])
   const openDoc = async (id: string) => { setBusy(true); try { const next = await window.ner.getDocument(id); setDoc(next); setSuggestions([]); setSelected(null) } finally { setBusy(false) } }
   const page = async (next: number) => { if (!project) return; setBusy(true); try { const result = await window.ner.loadPage(next); setProject(result); setDoc(null); setSuggestions([]) } finally { setBusy(false) } }
+  const searchDocuments = async (query: string) => { if (!project) return; setBusy(true); try { const result = await window.ner.searchDocuments(query); setProject(result); setDoc(null); setSuggestions([]); setSelected(null); setMessage(result.totalDocuments ? '' : `No documents found for “${query.trim()}”.`) } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not search documents.') } finally { setBusy(false) } }
+  useEffect(() => {
+    if (!project) return
+    const sidebar = document.querySelector('.sidebar')
+    const progress = sidebar?.querySelector('.progress')
+    if (!sidebar || !progress) return
+    const form = document.createElement('form')
+    form.className = 'queue-search'
+    form.innerHTML = '<span aria-hidden="true">⌕</span><input aria-label="Search documents" placeholder="Search documents…"><button type="submit">Search</button>'
+    const input = form.querySelector('input')!
+    input.value = project.searchQuery || ''
+    const submit = (event: Event) => { event.preventDefault(); void searchDocuments(input.value) }
+    form.addEventListener('submit', submit)
+    if (project.searchQuery) {
+      const clear = document.createElement('button')
+      clear.type = 'button'
+      clear.className = 'clear-search'
+      clear.setAttribute('aria-label', 'Clear search')
+      clear.textContent = '×'
+      clear.addEventListener('click', () => void searchDocuments(''))
+      form.appendChild(clear)
+    }
+    progress.before(form)
+    return () => form.remove()
+  }, [project])
   const nextDocument = async () => { if (!project || !doc) return; const index = project.documents.findIndex((item) => item.id === doc.id); const next = project.documents[index + 1]; if (next) return openDoc(next.id); if (project.page >= Math.ceil(project.totalDocuments / project.pageSize) - 1) return; setBusy(true); try { const nextPage = await window.ner.loadPage(project.page + 1); setProject(nextPage); const first = nextPage.documents[0]; if (first) setDoc(await window.ner.getDocument(first.id)); setSuggestions([]); setSelected(null) } finally { setBusy(false) } }
   const openDraft = async (startIndex = 0, wrap = false, totalDocuments = project?.totalDocuments || 0) => { if (!project) return false; const findDraft = async (from: number, until: number) => { for (let pageIndex = Math.floor(from / project.pageSize); pageIndex < Math.ceil(until / project.pageSize); pageIndex += 1) { const snapshot = await window.ner.loadPage(pageIndex); const offset = pageIndex * snapshot.pageSize; const item = snapshot.documents.find((candidate, index) => candidate.status === 'draft' && offset + index >= from && offset + index < until); if (item) return { snapshot, item } } return null }; setBusy(true); try { const found = await findDraft(startIndex, totalDocuments) || (wrap ? await findDraft(0, startIndex) : null); if (!found) { setMessage('No draft records found.'); return false } setProject(found.snapshot); setDoc(await window.ner.getDocument(found.item.id)); setSuggestions([]); setSelected(null); return true } finally { setBusy(false) } }
   const deleteCurrentRecord = async () => { if (!project || !doc) return; const currentIndex = project.page * project.pageSize + project.documents.findIndex((item) => item.id === doc.id); setBusy(true); try { await window.ner.deleteDocument(doc.id); await openDraft(Math.max(0, currentIndex), true, Math.max(0, project.totalDocuments - 1)) } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not delete this record.') } finally { setBusy(false) } }
