@@ -83,6 +83,7 @@ window.ner = {
   },
 
   loadPage: (page) => call(`/project/page?page=${page}`, 'GET'),
+  searchDocuments: (query) => call(`/project/search?query=${encodeURIComponent(query)}`, 'GET'),
   getDocument: (id) => call(`/project/document/${encodeURIComponent(id)}`, 'GET'),
 
   addLabel: (label: Label) => call('/labels', 'POST', label),

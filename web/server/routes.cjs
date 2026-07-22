@@ -14,11 +14,12 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 512
 
 let project
 let activePage = 0
+let activeSearchQuery = ''
 const pageSize = 100
 
 const sseClients = new Set()
 function broadcast() {
-  const payload = `data: ${JSON.stringify(project?.snapshot(activePage, pageSize) || null)}\n\n`
+  const payload = `data: ${JSON.stringify(project?.snapshot(activePage, pageSize, activeSearchQuery) || null)}\n\n`
   for (const res of sseClients) res.write(payload)
 }
 
@@ -57,8 +58,9 @@ router.post('/project/create', handler((req) => {
   project?.close()
   project = new ProjectDatabase(filePath)
   activePage = 0
+  activeSearchQuery = ''
   project.initialize(name)
-  const snapshot = project.snapshot(activePage, pageSize)
+  const snapshot = project.snapshot(activePage, pageSize, activeSearchQuery)
   rememberProject(snapshot.path, snapshot.name)
   broadcast()
   return snapshot
@@ -70,7 +72,8 @@ router.post('/project/open', upload.single('file'), handler((req) => {
   project?.close()
   project = new ProjectDatabase(filePath)
   activePage = 0
-  const snapshot = project.snapshot(activePage, pageSize)
+  activeSearchQuery = ''
+  const snapshot = project.snapshot(activePage, pageSize, activeSearchQuery)
   rememberProject(snapshot.path, snapshot.name)
   broadcast()
   return snapshot
@@ -84,7 +87,8 @@ router.post('/project/open-recent', handler((req) => {
   project?.close()
   project = new ProjectDatabase(filePath)
   activePage = 0
-  const snapshot = project.snapshot(activePage, pageSize)
+  activeSearchQuery = ''
+  const snapshot = project.snapshot(activePage, pageSize, activeSearchQuery)
   rememberProject(snapshot.path, snapshot.name)
   broadcast()
   return snapshot
@@ -93,7 +97,15 @@ router.post('/project/open-recent', handler((req) => {
 router.get('/project/page', handler((req) => {
   requireProject()
   activePage = Math.max(0, Number(req.query.page) || 0)
-  return project.snapshot(activePage, pageSize)
+  return project.snapshot(activePage, pageSize, activeSearchQuery)
+}))
+
+router.get('/project/search', handler((req) => {
+  requireProject()
+  if (req.query.query !== undefined && typeof req.query.query !== 'string') throw new Error('Search text must be a string.')
+  activeSearchQuery = (req.query.query || '').trim().slice(0, 500)
+  activePage = 0
+  return project.snapshot(activePage, pageSize, activeSearchQuery)
 }))
 
 router.get('/project/document/:id', handler((req) => {
