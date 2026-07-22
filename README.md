@@ -1,6 +1,6 @@
-# NERTator
+# Anottaker
 
-NERTator is a local-first Electron desktop app for creating and maintaining named-entity recognition (NER) training datasets. Import text records, define entity labels, annotate manually or with AI assistance, review work, and export JSONL training data.
+Anottaker is a local-first Electron desktop app for creating and maintaining named-entity recognition (NER) training datasets. Import text records, define entity labels, annotate manually or with AI assistance, review work, and export JSONL training data.
 
 Projects are portable SQLite files with the `.nerdb` extension. Dataset text and annotations stay on the local machine unless you explicitly ask an AI provider for suggestions.
 
