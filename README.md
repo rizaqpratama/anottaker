@@ -11,12 +11,13 @@ A web app version with the same UI and logic, running as a local Node/Express se
 - Portable `.nerdb` SQLite projects and recent-project list
 - Import `.txt`, `.csv`, and `.jsonl` datasets
 - Paginated document queue for large datasets; only the active batch is loaded
+- Case-insensitive document search that keeps results paginated
 - Manual text selection and character-offset annotations
 - Configurable labels with name, description, color, editing, and safe deletion
 - Draft/review workflow, next-document navigation, and draft-record navigation
 - Copy text, clear annotations, and delete records
 - JSONL export with `text` and ordered character-offset entity spans
-- AI suggestions through OpenAI or Google Gemini
+- AI suggestions through OpenAI, Google Gemini, or a local coding agent
 - Per-provider model selection, custom annotation instructions, request logs, token usage, elapsed time, and local pricing estimates
 
 ## Requirements
@@ -24,7 +25,7 @@ A web app version with the same UI and logic, running as a local Node/Express se
 - Node.js 20 or later
 - npm
 - A supported desktop platform for Electron
-- An OpenAI API key or a Google AI Studio Gemini API key for optional AI assistance
+- An OpenAI API key, a Google AI Studio Gemini API key, or an authenticated supported local coding agent for optional AI assistance
 
 ## Getting started
 
@@ -62,9 +63,10 @@ Then restart Electron.
 1. Create a project or open an existing `.nerdb` file.
 2. Add labels in **Manage labels**. A label has a name, description, and color.
 3. Import documents from a supported source.
-4. Select text and apply a label, or use **Suggest entities** in the AI sidebar.
-5. Review records and mark them reviewed when complete.
-6. Export reviewed records as JSONL.
+4. Use the document search field when you need to narrow the queue; clearing it restores the full queue.
+5. Select text and apply a label, or use **Suggest entities** in the AI sidebar.
+6. Review records and mark them reviewed when complete.
+7. Export reviewed records as JSONL.
 
 The footer includes **Open next draft**, which opens the lowest-index draft record. Deleting a record advances to the next draft record and wraps to the earliest remaining draft when necessary.
 
@@ -92,7 +94,9 @@ Open **AI settings** to choose a provider, enter its API key, select a model, an
 
 - **OpenAI** uses LangChain's OpenAI integration and can load models available to the saved OpenAI key.
 - **Google Gemini** uses LangChain's Google Generative AI integration and provides supported Gemini model choices.
+- **Local coding agent** uses an already authenticated local CLI: Codex, Claude Code, Google Antigravity, Cursor Agent, or OpenCode. Codex and Claude Code use bundled persistent ACP adapters; OpenCode uses its native persistent ACP adapter. The other supported agents run one request at a time in an empty temporary workspace.
 - API keys are encrypted using Electron `safeStorage`; they are not written to project databases or exposed to the renderer.
+- NERTator does not save an API key for a local coding agent. For persistent agents, **Clear agent context** ends the current session before the next suggestion.
 - Suggestions are ephemeral until accepted. **Apply all** adds all non-overlapping valid suggestions at once.
 - The shared prompt requires exact source-text spans, uses only defined labels, and requests at most one highest-confidence candidate per label. Your custom instructions are appended to that contract.
 - Requests time out after 60 seconds and show a user-facing error without changing existing annotations.
@@ -115,7 +119,7 @@ React renderer
   -> Electron main process
       -> SQLite project database (.nerdb)
       -> LangChain AI service
-          -> OpenAI or Google Gemini
+          -> OpenAI, Google Gemini, or a local coding agent
 ```
 
 The renderer never receives API keys. The main process fetches the canonical document from SQLite before an AI request, validates returned spans against that source text, and only accepted suggestions are saved as annotations.
@@ -127,7 +131,9 @@ electron/
   main.cjs       Electron lifecycle, IPC, encrypted settings
   preload.cjs    Narrow renderer-to-main API
   database.cjs   SQLite project persistence
-  ai.cjs         LangChain providers, prompt, validation, usage, pricing
+  ai.cjs         Provider dispatch, prompt, validation, usage, pricing
+  local-agent.cjs Local coding-agent discovery and invocation
+  acp-agent.cjs  Persistent ACP session management
 src/
   main.tsx       React application UI
   shared.ts      Shared types and span/export helpers
@@ -138,6 +144,7 @@ data/
 ## Security and privacy
 
 - `.nerdb` files contain local project data and annotations.
-- An AI request sends only the currently open document, its label schema, and your custom instructions to the selected provider.
+- An AI request sends only the currently open document, its label schema, and your custom instructions to the selected provider or selected local coding agent.
 - Requests occur only after you click **Suggest entities**.
 - API keys are encrypted with the operating system's secure storage when available.
+- Local-agent requests are restricted to annotation work and use an empty temporary workspace; direct-agent workspaces are removed after the request.
